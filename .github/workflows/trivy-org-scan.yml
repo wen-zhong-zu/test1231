@@ -1,0 +1,85 @@
+name: Trivy Organization Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 毎日 AM 2:00 UTC (JST 11:00)
+  workflow_dispatch:  # 手動実行用
+
+env:
+  ORG_NAME: ${{ github.repository_owner }}
+
+jobs:
+  get-repos:
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.list-repos.outputs.repos }}
+    steps:
+      - name: Get repository list
+        id: list-repos
+        env:
+          GH_TOKEN: ${{ secrets.ORG_SCAN_TOKEN }}
+        run: |
+          repos=$(gh repo list "${{ env.ORG_NAME }}" --json name,isArchived --limit 500 \
+            | jq -c '[.[] | select(.isArchived == false) | .name]')
+          echo "repos=$repos" >> $GITHUB_OUTPUT
+          echo "Found repositories:"
+          echo "$repos" | jq -r '.[]'
+
+  scan:
+    needs: get-repos
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: ${{ fromJson(needs.get-repos.outputs.repos) }}
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ORG_NAME }}/${{ matrix.repo }}
+          token: ${{ secrets.ORG_SCAN_TOKEN }}
+          path: target-repo
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'target-repo'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          format: 'template'
+          template: '@/contrib/html.tpl'
+          output: 'trivy-report.html'
+        continue-on-error: true
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ matrix.repo }}
+          path: trivy-report.html
+          retention-days: 30
+
+  summary:
+    needs: scan
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-reports
+          pattern: trivy-report-*
+
+      - name: Create summary
+        run: |
+          echo "=========================================="
+          echo "Trivy Organization Scan Complete"
+          echo "Organization: ${{ env.ORG_NAME }}"
+          echo "Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "=========================================="
+          echo ""
+          echo "Reports generated:"
+          find all-reports -name "*.html" -type f | while read f; do
+            repo_name=$(dirname "$f" | xargs basename | sed 's/trivy-report-//')
+            echo "  - $repo_name"
+          done
