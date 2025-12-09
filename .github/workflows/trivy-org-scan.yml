@@ -169,9 +169,17 @@ jobs:
               .container { max-width: 1200px; margin: 0 auto; }
               h1 { color: #333; margin-bottom: 10px; }
               .last-updated { color: #666; margin-bottom: 30px; font-size: 14px; }
+              .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+              .nav-tab { padding: 10px 20px; background: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+              .nav-tab.active { background: #2c3e50; color: #fff; }
+              .nav-tab.critical { background: #e74c3c; color: #fff; }
+              .tab-content { display: none; }
+              .tab-content.active { display: block; }
               .scan-group { background: #fff; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
               .scan-header { background: #2c3e50; color: #fff; padding: 15px 20px; border-radius: 8px 8px 0 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
               .scan-header:hover { background: #34495e; }
+              .scan-header.critical-header { background: #e74c3c; }
+              .scan-header.critical-header:hover { background: #c0392b; }
               .scan-header h2 { font-size: 18px; font-weight: 500; }
               .scan-header .time { font-size: 14px; opacity: 0.8; }
               .repo-list { padding: 0; display: none; }
@@ -189,28 +197,61 @@ jobs:
             <div class="container">
               <h1>🔍 Trivy Scan Reports</h1>
               <p class="last-updated">Last updated: <span id="lastUpdated">-</span></p>
-              <div id="reports"></div>
+              <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showTab('all')">📋 All Reports</button>
+                <button class="nav-tab critical" onclick="showTab('critical')">🚨 Critical (CVSS >= 8.0)</button>
+              </div>
+              <div id="all-reports" class="tab-content active"></div>
+              <div id="critical-reports" class="tab-content"></div>
             </div>
             <script>
               const REPORTS_DATA = [];
-              function render() {
-                const container = document.getElementById('reports');
-                if (REPORTS_DATA.length === 0) {
-                  container.innerHTML = '<div class="no-reports">No scan reports yet.</div>';
-                  return;
+              const CRITICAL_DATA = [];
+              function showTab(tab) {
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                if (tab === 'all') {
+                  document.querySelector('.nav-tab:not(.critical)').classList.add('active');
+                  document.getElementById('all-reports').classList.add('active');
+                } else {
+                  document.querySelector('.nav-tab.critical').classList.add('active');
+                  document.getElementById('critical-reports').classList.add('active');
                 }
-                document.getElementById('lastUpdated').textContent = REPORTS_DATA[0]?.date + ' ' + REPORTS_DATA[0]?.time || '-';
-                container.innerHTML = REPORTS_DATA.map((scan, i) => `
-                  <div class="scan-group">
-                    <div class="scan-header ${i === 0 ? 'open' : ''}" onclick="toggle(this)">
-                      <h2>${scan.date}</h2>
-                      <span class="time">${scan.time} UTC (${scan.repos.length} repos) <span class="toggle-icon">▼</span></span>
+              }
+              function render() {
+                const allContainer = document.getElementById('all-reports');
+                const criticalContainer = document.getElementById('critical-reports');
+                if (REPORTS_DATA.length === 0) {
+                  allContainer.innerHTML = '<div class="no-reports">No scan reports yet.</div>';
+                } else {
+                  document.getElementById('lastUpdated').textContent = REPORTS_DATA[0]?.date + ' ' + REPORTS_DATA[0]?.time || '-';
+                  allContainer.innerHTML = REPORTS_DATA.map((scan, i) => `
+                    <div class="scan-group">
+                      <div class="scan-header ${i === 0 ? 'open' : ''}" onclick="toggle(this)">
+                        <h2>${scan.date}</h2>
+                        <span class="time">${scan.time} UTC (${scan.repos.length} repos) <span class="toggle-icon">▼</span></span>
+                      </div>
+                      <ul class="repo-list ${i === 0 ? 'active' : ''}">
+                        ${scan.repos.map(r => `<li class="repo-item"><a href="${r.path}" target="_blank">${r.name}</a></li>`).join('')}
+                      </ul>
                     </div>
-                    <ul class="repo-list ${i === 0 ? 'active' : ''}">
-                      ${scan.repos.map(r => `<li class="repo-item"><a href="${r.path}" target="_blank">${r.name}</a></li>`).join('')}
-                    </ul>
-                  </div>
-                `).join('');
+                  `).join('');
+                }
+                if (CRITICAL_DATA.length === 0) {
+                  criticalContainer.innerHTML = '<div class="no-reports">No critical vulnerability reports yet.</div>';
+                } else {
+                  criticalContainer.innerHTML = CRITICAL_DATA.map((scan, i) => `
+                    <div class="scan-group">
+                      <div class="scan-header critical-header ${i === 0 ? 'open' : ''}" onclick="toggle(this)">
+                        <h2>${scan.date}</h2>
+                        <span class="time">${scan.time} UTC <span class="toggle-icon">▼</span></span>
+                      </div>
+                      <ul class="repo-list ${i === 0 ? 'active' : ''}">
+                        <li class="repo-item"><a href="${scan.path}" target="_blank">View Critical Report</a></li>
+                      </ul>
+                    </div>
+                  `).join('');
+                }
               }
               function toggle(el) {
                 el.classList.toggle('open');
@@ -254,8 +295,27 @@ jobs:
           done
           REPORTS_JSON+="]"
           
+          # Generate CRITICAL_DATA from critical directory
+          CRITICAL_JSON="["
+          first_critical=true
+          
+          for date_dir in $(ls -r critical/ 2>/dev/null); do
+            for html_file in $(ls -r "critical/$date_dir/"*.html 2>/dev/null); do
+              if [ -f "$html_file" ]; then
+                time_name=$(basename "$html_file" .html)
+                if [ "$first_critical" = false ]; then
+                  CRITICAL_JSON+=","
+                fi
+                first_critical=false
+                CRITICAL_JSON+="{\"date\":\"$date_dir\",\"time\":\"$time_name\",\"path\":\"$html_file\"}"
+              fi
+            done
+          done
+          CRITICAL_JSON+="]"
+          
           # Update index.html with new data
           sed -i "s|const REPORTS_DATA = .*\];|const REPORTS_DATA = $REPORTS_JSON;|" index.html
+          sed -i "s|const CRITICAL_DATA = .*\];|const CRITICAL_DATA = $CRITICAL_JSON;|" index.html
           
           # Generate critical CVEs HTML summary
           SCAN_DATE=$(date -u '+%Y-%m-%d')
