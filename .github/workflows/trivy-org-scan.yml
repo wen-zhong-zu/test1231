@@ -77,7 +77,7 @@ jobs:
           path: temp-reports
           pattern: trivy-report-*
 
-      - name: Organize and commit reports
+      - name: Organize reports and update index
         run: |
           SCAN_DATE=$(date -u '+%Y-%m-%d')
           SCAN_TIME=$(date -u '+%H%M%S')
@@ -94,8 +94,44 @@ jobs:
           
           rm -rf temp-reports
           
+          # Generate REPORTS_DATA from reports directory
+          echo "Generating index.html data..."
+          REPORTS_JSON="["
+          first_scan=true
+          
+          for date_dir in $(ls -r reports/ 2>/dev/null); do
+            for time_dir in $(ls -r "reports/$date_dir/" 2>/dev/null); do
+              if [ "$first_scan" = false ]; then
+                REPORTS_JSON+=","
+              fi
+              first_scan=false
+              
+              REPOS_JSON="["
+              first_repo=true
+              for html_file in "reports/$date_dir/$time_dir"/*.html; do
+                if [ -f "$html_file" ]; then
+                  repo_name=$(basename "$html_file" .html)
+                  if [ "$first_repo" = false ]; then
+                    REPOS_JSON+=","
+                  fi
+                  first_repo=false
+                  REPOS_JSON+="{\"name\":\"$repo_name\",\"path\":\"$html_file\"}"
+                fi
+              done
+              REPOS_JSON+="]"
+              
+              REPORTS_JSON+="{\"date\":\"$date_dir\",\"time\":\"$time_dir\",\"repos\":$REPOS_JSON}"
+            done
+          done
+          REPORTS_JSON+="]"
+          
+          # Update index.html
+          sed -i "s|const REPORTS_DATA = \[\];|const REPORTS_DATA = $REPORTS_JSON;|" index.html
+
+      - name: Commit changes
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add reports/
-          git commit -m "Add Trivy scan reports - ${SCAN_DATE} ${SCAN_TIME}" || echo "No changes to commit"
+          git add reports/ index.html
+          git commit -m "Add Trivy scan reports - $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           git push
