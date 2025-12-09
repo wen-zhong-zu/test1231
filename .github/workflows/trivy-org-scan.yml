@@ -43,6 +43,7 @@ jobs:
       - name: Install Trivy
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          curl -sfL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
 
       - name: Run Trivy vulnerability scan
         run: |
@@ -50,7 +51,7 @@ jobs:
             --scanners vuln \
             --severity CRITICAL,HIGH,MEDIUM \
             --format template \
-            --template "@contrib/html.tpl" \
+            --template "@html.tpl" \
             --output trivy-report.html || true
 
       - name: Upload HTML report
