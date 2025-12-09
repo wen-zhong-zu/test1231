@@ -281,11 +281,16 @@ jobs:
               for html_file in "reports/$date_dir/$time_dir"/*.html; do
                 if [ -f "$html_file" ]; then
                   repo_name=$(basename "$html_file" .html)
+                  # Check if this repo has critical CVEs
+                  has_critical="false"
+                  if [ -d "../temp-critical/critical-cves-${repo_name}" ]; then
+                    has_critical="true"
+                  fi
                   if [ "$first_repo" = false ]; then
                     REPOS_JSON+=","
                   fi
                   first_repo=false
-                  REPOS_JSON+="{\"name\":\"$repo_name\",\"path\":\"$html_file\"}"
+                  REPOS_JSON+="{\"name\":\"$repo_name\",\"path\":\"$html_file\",\"hasCritical\":$has_critical}"
                 fi
               done
               REPOS_JSON+="]"
