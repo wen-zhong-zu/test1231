@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trivy Scan Reports</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #333; margin-bottom: 10px; }
+    .last-updated { color: #666; margin-bottom: 30px; font-size: 14px; }
+    .scan-group { background: #fff; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .scan-header { background: #2c3e50; color: #fff; padding: 15px 20px; border-radius: 8px 8px 0 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .scan-header:hover { background: #34495e; }
+    .scan-header h2 { font-size: 18px; font-weight: 500; }
+    .scan-header .time { font-size: 14px; opacity: 0.8; }
+    .repo-list { padding: 0; display: none; list-style: none; }
+    .repo-list.active { display: block; }
+    .repo-item { padding: 12px 20px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; }
+    .repo-item:last-child { border-bottom: none; }
+    .repo-item a { color: #3498db; text-decoration: none; }
+    .repo-item a:hover { text-decoration: underline; }
+    .critical-badge { background: #e74c3c; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .no-reports { text-align: center; padding: 60px 20px; color: #666; }
+    .toggle-icon { transition: transform 0.2s; }
+    .scan-header.open .toggle-icon { transform: rotate(180deg); }
+    .stats { display: flex; gap: 20px; margin-bottom: 20px; }
+    .stat-card { background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .stat-card.critical { border-left: 4px solid #e74c3c; }
+    .stat-card .number { font-size: 24px; font-weight: bold; }
+    .stat-card .label { color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Trivy Scan Reports</h1>
+    <p class="last-updated">Last updated: <span id="lastUpdated">-</span></p>
+    <div class="stats">
+      <div class="stat-card"><div class="number" id="totalRepos">0</div><div class="label">Total Repos</div></div>
+      <div class="stat-card critical"><div class="number" id="criticalRepos">0</div><div class="label">With Critical (CVSS≥8)</div></div>
+    </div>
+    <div id="reports"></div>
+  </div>
+  <script>
+    const REPORTS_DATA = [{"date":"2025-12-09","time":"100030","repos":[{"name":"aaaaaaaaaa","path":"reports/2025-12-09/100030/aaaaaaaaaa.html","hasCritical":false},{"name":"amplify-next-template","path":"reports/2025-12-09/100030/amplify-next-template.html","hasCritical":true},{"name":"amplify-vite-react-template","path":"reports/2025-12-09/100030/amplify-vite-react-template.html","hasCritical":false},{"name":"crm-demo","path":"reports/2025-12-09/100030/crm-demo.html","hasCritical":true},{"name":"mimamori","path":"reports/2025-12-09/100030/mimamori.html","hasCritical":false},{"name":"nextjs-boilerplate","path":"reports/2025-12-09/100030/nextjs-boilerplate.html","hasCritical":true},{"name":"nextjs-boilerplate00","path":"reports/2025-12-09/100030/nextjs-boilerplate00.html","hasCritical":true},{"name":"saas-control-panel","path":"reports/2025-12-09/100030/saas-control-panel.html","hasCritical":true},{"name":"saas-provider-demo","path":"reports/2025-12-09/100030/saas-provider-demo.html","hasCritical":true},{"name":"test123","path":"reports/2025-12-09/100030/test123.html","hasCritical":true},{"name":"test1231","path":"reports/2025-12-09/100030/test1231.html","hasCritical":false},{"name":"voice-chat","path":"reports/2025-12-09/100030/voice-chat.html","hasCritical":false}]}];
+    function render() {
+      const container = document.getElementById('reports');
+      if (REPORTS_DATA.length === 0) {
+        container.innerHTML = '<div class="no-reports">No scan reports yet.</div>';
+        return;
+      }
+      const latest = REPORTS_DATA[0];
+      document.getElementById('lastUpdated').textContent = latest?.date + ' ' + latest?.time + ' UTC' || '-';
+      document.getElementById('totalRepos').textContent = latest?.repos?.length || 0;
+      document.getElementById('criticalRepos').textContent = latest?.repos?.filter(r => r.hasCritical).length || 0;
+      
+      container.innerHTML = REPORTS_DATA.map((scan, i) => `
+        <div class="scan-group">
+          <div class="scan-header ${i === 0 ? 'open' : ''}" onclick="toggle(this)">
+            <h2>${scan.date}</h2>
+            <span class="time">${scan.time} UTC (${scan.repos.length} repos) <span class="toggle-icon">▼</span></span>
+          </div>
+          <ul class="repo-list ${i === 0 ? 'active' : ''}">
+            ${scan.repos.map(r => `
+              <li class="repo-item">
+                <a href="${r.path}" target="_blank">${r.name}</a>
+                ${r.hasCritical ? '<span class="critical-badge">🚨 CRITICAL</span>' : ''}
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `).join('');
+    }
+    function toggle(el) {
+      el.classList.toggle('open');
+      el.nextElementSibling.classList.toggle('active');
+    }
+    render();
+  </script>
+</body>
+</html>
