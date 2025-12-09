@@ -345,6 +345,6 @@ jobs:
           git commit -m "Add Trivy scan reports - $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           
           echo "=== Pushing to gh-pages ==="
-          git push origin gh-pages --force
+          git push origin gh-pages
           
           echo "=== Done ==="
