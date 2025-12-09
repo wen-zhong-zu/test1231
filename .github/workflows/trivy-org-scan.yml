@@ -59,29 +59,43 @@ jobs:
         with:
           name: trivy-report-${{ matrix.repo }}
           path: trivy-report.html
-          retention-days: 30
+          retention-days: 1
 
-  summary:
+  commit-reports:
     needs: scan
     runs-on: ubuntu-latest
     if: always()
     steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ORG_SCAN_TOKEN }}
+
       - name: Download all reports
         uses: actions/download-artifact@v4
         with:
-          path: all-reports
+          path: temp-reports
           pattern: trivy-report-*
 
-      - name: Create summary
+      - name: Organize and commit reports
         run: |
-          echo "=========================================="
-          echo "Trivy Organization Scan Complete"
-          echo "Organization: ${{ env.ORG_NAME }}"
-          echo "Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "=========================================="
-          echo ""
-          echo "Reports generated:"
-          find all-reports -name "*.html" -type f | while read f; do
-            repo_name=$(dirname "$f" | xargs basename | sed 's/trivy-report-//')
-            echo "  - $repo_name"
+          SCAN_DATE=$(date -u '+%Y-%m-%d')
+          SCAN_TIME=$(date -u '+%H%M%S')
+          REPORT_DIR="reports/${SCAN_DATE}/${SCAN_TIME}"
+          
+          mkdir -p "$REPORT_DIR"
+          
+          for dir in temp-reports/trivy-report-*; do
+            if [ -d "$dir" ]; then
+              repo_name=$(basename "$dir" | sed 's/trivy-report-//')
+              cp "$dir/trivy-report.html" "$REPORT_DIR/${repo_name}.html"
+            fi
           done
+          
+          rm -rf temp-reports
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/
+          git commit -m "Add Trivy scan reports - ${SCAN_DATE} ${SCAN_TIME}" || echo "No changes to commit"
+          git push
