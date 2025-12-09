@@ -121,6 +121,11 @@ jobs:
           else
             echo "gh-pages branch exists"
             ls -la gh-pages/
+            # Remove .gitignore that blocks reports
+            if [ -f "gh-pages/.gitignore" ]; then
+              echo "Removing .gitignore from gh-pages..."
+              rm -f gh-pages/.gitignore
+            fi
           fi
 
       - name: Download all reports
@@ -345,6 +350,6 @@ jobs:
           git commit -m "Add Trivy scan reports - $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           
           echo "=== Pushing to gh-pages ==="
-          git push origin gh-pages
+          git push origin gh-pages --force
           
           echo "=== Done ==="
