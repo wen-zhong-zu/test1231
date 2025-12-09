@@ -45,7 +45,7 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
           curl -sfL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
 
-      - name: Run Trivy vulnerability scan
+      - name: Run Trivy vulnerability scan (HTML)
         run: |
           trivy fs target-repo \
             --scanners vuln \
@@ -54,11 +54,51 @@ jobs:
             --template "@html.tpl" \
             --output trivy-report.html || true
 
+      - name: Run Trivy vulnerability scan (JSON for CVSS check)
+        run: |
+          trivy fs target-repo \
+            --scanners vuln \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format json \
+            --output trivy-report.json || true
+
+      - name: Check for CVSS >= 8.0 vulnerabilities
+        id: cvss-check
+        run: |
+          HIGH_CVSS=$(jq -r '
+            [.Results[]?.Vulnerabilities[]? | 
+              select(.CVSS != null) | 
+              .CVSS | to_entries[] | .value.V3Score // .value.V2Score // 0
+            ] | map(select(. >= 8.0)) | length
+          ' trivy-report.json 2>/dev/null || echo "0")
+          
+          echo "high_cvss_count=$HIGH_CVSS" >> $GITHUB_OUTPUT
+          
+          if [ "$HIGH_CVSS" -gt 0 ]; then
+            echo "⚠️ Found $HIGH_CVSS vulnerabilities with CVSS >= 8.0 in ${{ matrix.repo }}"
+            
+            # Extract critical CVE details
+            jq -r '
+              .Results[]?.Vulnerabilities[]? | 
+              select(.CVSS != null) |
+              select((.CVSS | to_entries[] | .value.V3Score // .value.V2Score // 0) >= 8.0) |
+              "\(.VulnerabilityID) | \(.PkgName) | \(.CVSS | to_entries[0] | .value.V3Score // .value.V2Score) | \(.Title // "N/A")"
+            ' trivy-report.json > critical-cves.txt 2>/dev/null || true
+          fi
+
       - name: Upload HTML report
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ matrix.repo }}
           path: trivy-report.html
+          retention-days: 1
+
+      - name: Upload critical CVEs if found
+        if: steps.cvss-check.outputs.high_cvss_count > 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-cves-${{ matrix.repo }}
+          path: critical-cves.txt
           retention-days: 1
 
   commit-reports:
@@ -89,6 +129,13 @@ jobs:
         with:
           path: temp-reports
           pattern: trivy-report-*
+
+      - name: Download critical CVEs
+        uses: actions/download-artifact@v4
+        with:
+          path: temp-critical
+          pattern: critical-cves-*
+        continue-on-error: true
 
       - name: Organize reports and update index
         run: |
@@ -209,6 +256,43 @@ jobs:
           
           # Update index.html with new data
           sed -i "s|const REPORTS_DATA = .*\];|const REPORTS_DATA = $REPORTS_JSON;|" index.html
+          
+          # Generate critical CVEs summary
+          SCAN_DATE=$(date -u '+%Y-%m-%d')
+          SCAN_TIME=$(date -u '+%H%M%S')
+          CRITICAL_DIR="critical/${SCAN_DATE}"
+          mkdir -p "$CRITICAL_DIR"
+          
+          echo "# Critical Vulnerabilities (CVSS >= 8.0)" > "$CRITICAL_DIR/${SCAN_TIME}.md"
+          echo "" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+          echo "Scan Time: ${SCAN_DATE} ${SCAN_TIME} UTC" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+          echo "" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+          
+          has_critical=false
+          for dir in ../temp-critical/critical-cves-*; do
+            if [ -d "$dir" ] && [ -f "$dir/critical-cves.txt" ]; then
+              repo_name=$(basename "$dir" | sed 's/critical-cves-//')
+              echo "## $repo_name" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+              echo "" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+              echo "| CVE ID | Package | CVSS Score | Title |" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+              echo "|--------|---------|------------|-------|" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+              while IFS='|' read -r cve pkg score title; do
+                echo "| $cve | $pkg | $score | $title |" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+              done < "$dir/critical-cves.txt"
+              echo "" >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+              has_critical=true
+            fi
+          done
+          
+          if [ "$has_critical" = false ]; then
+            echo "No critical vulnerabilities found." >> "$CRITICAL_DIR/${SCAN_TIME}.md"
+          fi
+          
+          # Output summary to console (for future notification)
+          echo "=========================================="
+          echo "CRITICAL VULNERABILITIES SUMMARY (CVSS >= 8.0)"
+          echo "=========================================="
+          cat "$CRITICAL_DIR/${SCAN_TIME}.md"
 
       - name: Commit to gh-pages
         run: |
