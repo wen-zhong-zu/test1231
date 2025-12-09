@@ -40,17 +40,18 @@ jobs:
           token: ${{ secrets.ORG_SCAN_TOKEN }}
           path: target-repo
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: 'target-repo'
-          scanners: 'vuln'
-          severity: 'CRITICAL,HIGH,MEDIUM'
-          format: 'template'
-          template: '@/contrib/html.tpl'
-          output: 'trivy-report.html'
-        continue-on-error: true
+        run: |
+          trivy fs target-repo \
+            --scanners vuln \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format template \
+            --template "@contrib/html.tpl" \
+            --output trivy-report.html || true
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4
