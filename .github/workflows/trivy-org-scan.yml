@@ -94,21 +94,33 @@ jobs:
     if: always()
     steps:
       - name: Checkout gh-pages branch
+        id: checkout-gh-pages
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           token: ${{ secrets.ORG_SCAN_TOKEN }}
           path: gh-pages
+          fetch-depth: 0
         continue-on-error: true
 
       - name: Initialize gh-pages if not exists
         run: |
-          if [ ! -d "gh-pages" ]; then
+          if [ ! -d "gh-pages/.git" ]; then
+            echo "Creating new gh-pages branch..."
+            rm -rf gh-pages
             mkdir gh-pages
             cd gh-pages
             git init
             git checkout -b gh-pages
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            echo "# Trivy Scan Reports" > README.md
+            git add README.md
+            git commit -m "Initialize gh-pages branch"
             git remote add origin "https://x-access-token:${{ secrets.ORG_SCAN_TOKEN }}@github.com/${{ github.repository }}.git"
+          else
+            echo "gh-pages branch exists"
+            ls -la gh-pages/
           fi
 
       - name: Download all reports
@@ -116,13 +128,18 @@ jobs:
         with:
           path: temp-reports
           pattern: trivy-report-*
+          merge-multiple: false
 
       - name: Debug - List downloaded files
         run: |
-          echo "=== Downloaded artifacts ==="
-          find temp-reports -type f -name "*.html" | head -20
+          echo "=== Current directory ==="
+          pwd
+          echo "=== Downloaded artifacts structure ==="
+          ls -laR temp-reports/ | head -50
           echo "=== Total HTML files ==="
           find temp-reports -type f -name "*.html" | wc -l
+          echo "=== HTML file paths ==="
+          find temp-reports -type f -name "*.html"
 
       - name: Organize reports and update index
         run: |
@@ -304,11 +321,30 @@ jobs:
           echo "=== Generated REPORTS_DATA ==="
           echo "$REPORTS_JSON" | head -c 500
 
+      - name: Debug - Check gh-pages content before commit
+        run: |
+          cd gh-pages
+          echo "=== gh-pages directory structure ==="
+          ls -laR | head -100
+          echo "=== Git status ==="
+          git status
+
       - name: Commit to gh-pages
         run: |
           cd gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          echo "=== Adding files ==="
           git add -A
+          
+          echo "=== Git status after add ==="
+          git status
+          
+          echo "=== Committing ==="
           git commit -m "Add Trivy scan reports - $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          
+          echo "=== Pushing to gh-pages ==="
           git push origin gh-pages --force
+          
+          echo "=== Done ==="
