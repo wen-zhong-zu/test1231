@@ -188,6 +188,7 @@ jobs:
               .repo-item:last-child { border-bottom: none; }
               .repo-item a { color: #3498db; text-decoration: none; }
               .repo-item a:hover { text-decoration: underline; }
+              .repo-item .critical-badge { background: #e74c3c; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px; }
               .no-reports { text-align: center; padding: 60px 20px; color: #666; }
               .toggle-icon { transition: transform 0.2s; }
               .scan-header.open .toggle-icon { transform: rotate(180deg); }
@@ -232,7 +233,7 @@ jobs:
                         <span class="time">${scan.time} UTC (${scan.repos.length} repos) <span class="toggle-icon">▼</span></span>
                       </div>
                       <ul class="repo-list ${i === 0 ? 'active' : ''}">
-                        ${scan.repos.map(r => `<li class="repo-item"><a href="${r.path}" target="_blank">${r.name}</a></li>`).join('')}
+                        ${scan.repos.map(r => `<li class="repo-item"><a href="${r.path}" target="_blank">${r.name}</a>${r.hasCritical ? '<span class="critical-badge">🚨 CRITICAL</span>' : ''}</li>`).join('')}
                       </ul>
                     </div>
                   `).join('');
